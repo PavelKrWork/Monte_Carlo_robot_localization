@@ -15,11 +15,7 @@ def draw_robot(state: State, radius=0.2):
               fc='red', ec='red', linewidth=2, zorder=6)
 
 
-def draw_particles(particles: np.ndarray):
-    """
-    Быстрая отрисовка всех частиц в виде маленьких зеленых стрелочек.
-    particles: 2D массив NumPy формы (N, 3), где строки — это [x, y, theta]
-    """
+def draw_particles(particles: np.ndarray, particle_color='green'):
     X = particles[:, 0]
     Y = particles[:, 1]
     Angles = particles[:, 2]
@@ -29,14 +25,14 @@ def draw_particles(particles: np.ndarray):
     V = np.sin(Angles)
     
     # plt.quiver рисует тысячи стрелок мгновенно. 
-    # color='green' — цвет частиц, scale=30 — размер стрелочек (подберите под шаг)
-    plt.quiver(X, Y, U, V, color='green', scale=25, width=0.003, zorder=4, alpha=0.6)
+    # color — цвет частиц, scale=30 — размер стрелочек
+    plt.quiver(X, Y, U, V, color=particle_color, scale=25, width=0.003, zorder=4, alpha=0.6)
 
 
 def draw_field_with_robot(robot_state: State, particles: np.ndarray, 
                           top_left=[-1.3, 6.0], top_right=[1.3, 6.0], 
                           bottom_left=[-1.3, -6.0], bottom_right=[1.3, -6.0], 
-                          length=12.0, width=9.0):
+                          length=12.0, width=9.0, particle_color='green'):
     
     plt.figure(figsize=(8, 10)) # Создаем окно графика
     
@@ -61,7 +57,7 @@ def draw_field_with_robot(robot_state: State, particles: np.ndarray,
     bottom_goal = plt.Rectangle((bottom_left[0], -half_L), goal_width, 1.2, edgecolor='black', facecolor='none', linewidth=2)
     plt.gca().add_patch(bottom_goal)
     
-    draw_particles(particles)
+    draw_particles(particles, particle_color)
     
     # Отрисовка робота
     draw_robot(robot_state)
