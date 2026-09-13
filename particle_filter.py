@@ -1,43 +1,47 @@
 import numpy as np
-from dataclasses import dataclass
+import random
+from structures import *
 
-# 2D particles cloud
-@dataclass
-class State:
-    x: float
-    y: float
-    theta: float
+def resampling_wheel(initial_particles: list, particles_weights: list, particles_cnt: int) -> list:
+    new_particles = []
 
-# Land mark coords initialization
-@dataclass
-class Coord:
-    x: float
-    y: float
+    beta = 0
+    index = int(random.randint(0, particles_cnt - 1))
+    max_weight = max(particles_weights)
 
-@dataclass
-class LandMark:
-    left_coord: Coord
-    right_coord: Coord
+    for i in range(particles_cnt):
+        beta += random.uniform(0, 2 * max_weight)
 
-# TODO: resampling wheel algo implementation
-def resampling_wheel(weights: dict, particleList: list) -> list:
-    pass
+        while beta > particles_weights[index]:
+            beta -= particles_weights[index]
+            index = (index + 1) % particles_cnt
+        new_particles.append([initial_particles[index], particles_weights[index]])
+
+    return new_particles
+
 
 # main algo logic of Particle filter
 class ParticleFilter:
     def __init__(self, num_particles: int, state: State, land_mark: LandMark, system_noise: State, sensor_noise: np.ndarray):
         
         """
-        add here params description 
+        num_particles - количество частиц
+        state - начальное состояние
+        land_mark - координаты ориентиров
+        system_noise - шум системы
+        sensor_noise - шум измерений
+        particles - состояния частиц
+        weights - веса частиц
         """
 
         self.num_particles = num_particles
+        self.ideal_state = state
         self.state = state
         self.land_mark = land_mark
         self.system_noise = system_noise
         self.sensor_noise = sensor_noise
 
-        # apologise that: x, y, thate are independent, loc = mean, scale = var
+        # apologise that: x, y, thate are independent, loc = mean, scale = standard deviation
         x_particles = np.random.normal(loc=state.x, scale=system_noise.x, size=num_particles)
         y_particles = np.random.normal(loc=state.y, scale=system_noise.y, size=num_particles)
         
@@ -50,15 +54,25 @@ class ParticleFilter:
         self.weights = np.ones(num_particles) / num_particles
 
     # предсказываем положение робота
-    def robot_move(self, step: State) -> State:
+    # сначало робот совершает движение, а потом поворот
+    def ideal_robot_move(self, step: State) -> State:
         dx_global = step.x * np.cos(self.state.theta) - step.y * np.sin(self.state.theta)
         dy_global = step.x * np.sin(self.state.theta) + step.y * np.cos(self.state.theta)
 
-        self.state = State(
+        self.ideal_state = State(
             self.state.x + dx_global,
             self.state.y + dy_global,
             (self.state.theta + step.theta + np.pi) % (2 * np.pi) - np.pi,
         )
+
+        return self.ideal_state
+
+    def robot_move(self, step: State) -> State:
+        self.state = self.ideal_robot_move(step)
+
+        self.state.x += np.random.normal(0, self.system_noise.x)
+        self.state.y += np.random.normal(0, self.system_noise.y)
+        self.state.theta = (self.state.theta + np.random.normal(0, self.system_noise.theta) + np.pi) % (2 * np.pi) - np.pi
 
         return self.state
 
@@ -74,10 +88,32 @@ class ParticleFilter:
             (self.land_mark.right_coord.y - self.state.y) ** 2
         )
 
+        phi_l = np.arctan2(
+            self.land_mark.left_coord.y - self.state.y,
+            self.land_mark.left_coord.x - self.state.x
+        )
+
+        phi_r = np.arctan2(
+            self.land_mark.right_coord.y - self.state.y,
+            self.land_mark.right_coord.x - self.state.x
+        )
+
+        alpha_l = phi_l - self.state.theta
+        alpha_r = phi_r - self.state.theta
+
+        alpha_l = (alpha_l + np.pi) % (2 * np.pi) - np.pi
+        alpha_r = (alpha_r + np.pi) % (2 * np.pi) - np.pi
+
+        alpha_l += np.random.normal(0, self.sensor_noise[2])
+        alpha_r += np.random.normal(0, self.sensor_noise[2])
+
+        alpha_l = (alpha_l + np.pi) % (2 * np.pi) - np.pi
+        alpha_r = (alpha_r + np.pi) % (2 * np.pi) - np.pi
+
         zl = dl + np.random.normal(0, self.sensor_noise[0])
         zr = dr + np.random.normal(0, self.sensor_noise[1])
 
-        return zl, zr
+        return zl, zr, alpha_l, alpha_r
 
     # предсказываем положение робота
     def particles_move(self, step: State) -> np.array:
@@ -96,31 +132,61 @@ class ParticleFilter:
         for i in range(self.num_particles):
             dl = np.sqrt((self.land_mark.left_coord.x - self.particles[i][0]) ** 2 + (self.land_mark.left_coord.y - self.particles[i][1]) ** 2)
             dr = np.sqrt((self.land_mark.right_coord.x - self.particles[i][0]) ** 2 + (self.land_mark.right_coord.y - self.particles[i][1]) ** 2)
-            particle_measurements[i] = (dl, dr)
+            
+            dfi_l = np.arctan2(
+                self.land_mark.left_coord.y - self.particles[i][1],
+                self.land_mark.left_coord.x - self.particles[i][0]
+            )
+
+            dfi_r = np.arctan2(
+                self.land_mark.right_coord.y - self.particles[i][1],
+                self.land_mark.right_coord.x - self.particles[i][0]
+            )
+
+            alpha_l = dfi_l - self.particles[i][2]
+            alpha_r = dfi_r - self.particles[i][2]
+
+            alpha_l = (alpha_l + np.pi) % (2 * np.pi) - np.pi
+            alpha_r = (alpha_r + np.pi) % (2 * np.pi) - np.pi
+
+            particle_measurements[i] = (dl, dr, alpha_l, alpha_r)
         
         return particle_measurements
 
-    def weight_calc(self) -> list:
-        weights = [0] * self.num_particles
+    def weight_calc(self, measurement: tuple) -> np.ndarray:
+        weights = np.zeros(self.num_particles)
         particle_measurements = self.particle_measurement()
-        zl, zr = self.sensor_measurement()
+        zl, zr, alpha_l, alpha_r = measurement
         sigma_l = self.sensor_noise[0]
         sigma_r = self.sensor_noise[1]
+        sigma_alpha = self.sensor_noise[2]
         for i in range(self.num_particles):
-            dl, dr = particle_measurements[i]
+            dl, dr, dalpha_l, dalpha_r = particle_measurements[i]
             wl = 1 / np.sqrt(2 * np.pi * sigma_l ** 2) * np.exp(-(zl - dl) ** 2 / (2 * sigma_l ** 2))
             wr = 1 / np.sqrt(2 * np.pi * sigma_r ** 2) * np.exp(-(zr - dr) ** 2 / (2 * sigma_r ** 2))
-            weights[i] = wl * wr
 
-        weights = np.array(weights)
+            error_alpha_l = (alpha_l - dalpha_l + np.pi) % (2 * np.pi) - np.pi
+            error_alpha_r = (alpha_r - dalpha_r + np.pi) % (2 * np.pi) - np.pi
+            walphal = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * np.exp(-error_alpha_l ** 2 / (2 * sigma_alpha ** 2))
+            walphar = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * np.exp(-error_alpha_r ** 2 / (2 * sigma_alpha ** 2))
+
+            weights[i] = wl * wr * walphal * walphar
+
         weights /= np.sum(weights)
-
         self.weights = weights
         
         return weights
     
     def resample(self) -> np.array:
-        pass
+        initial_particles = np.arange(self.num_particles)
+        new_particles = resampling_wheel(initial_particles, self.weights, self.num_particles)
+        particle_indexes = [el_i[0] for el_i in new_particles]
+        self.particles = self.particles[particle_indexes]
+
+        # rescaling weights
+        self.weights = np.ones(self.num_particles) / self.num_particles
+
+        return self.particles
 
     def estimate_robot_state(self) -> State:
         estimate_x = 0
@@ -138,6 +204,12 @@ class ParticleFilter:
         return State(estimate_x, estimate_y, estimate_theta)
 
 
-    def simulate(self, iters_count: int):
-        pass
+    def simulate(self, step: State) -> State:
+        self.robot_move(step)
+        sm = self.sensor_measurement()
+        self.particles_move(step)
+        self.weight_calc(sm)
+        self.resample()
+        est_state = self.estimate_robot_state()
 
+        return est_state
