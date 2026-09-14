@@ -38,6 +38,8 @@ class ParticleFilter:
         self.num_particles = num_particles
         self.ideal_state = State(initial_state.x, initial_state.y, initial_state.theta)
         self.state = State(initial_state.x, initial_state.y, initial_state.theta)
+        self.no_pf_state = State(initial_state.x, initial_state.y, initial_state.theta)
+
         self.land_mark = land_mark
         self.system_noise = system_noise
         self.sensor_noise = sensor_noise
@@ -88,6 +90,24 @@ class ParticleFilter:
         self.ideal_robot_move(step)
 
         return self.state
+
+    def no_pf_move(self, step: State) -> State:
+        dx_global = (
+            step.x * np.cos(self.no_pf_state.theta)
+            - step.y * np.sin(self.no_pf_state.theta)
+        )
+        dy_global = (
+            step.x * np.sin(self.no_pf_state.theta)
+            + step.y * np.cos(self.no_pf_state.theta)
+        )
+
+        self.no_pf_state = State(
+            self.no_pf_state.x + dx_global,
+            self.no_pf_state.y + dy_global,
+            (self.no_pf_state.theta + step.theta + np.pi) % (2*np.pi) - np.pi
+        )
+
+        return self.no_pf_state
 
     # Измерение сенсора робота
     def sensor_measurement(self) -> tuple:
@@ -225,13 +245,21 @@ class ParticleFilter:
         
         return State(estimate_x, estimate_y, estimate_theta)
 
-    # Производим симуляцию 1 хода робота
     def simulate(self, step: State) -> State:
+        # реальное движение робота
         self.robot_move(step)
+
+        # измерение реального робота
         sm = self.sensor_measurement()
+
+        # оценка без PF
+        self.no_pf_move(step)
+
+        # PF
         self.particles_move(step)
         self.weight_calc(sm)
+
         est_state = self.estimate_robot_state()
         self.resample()
-        
+
         return est_state
