@@ -73,14 +73,19 @@ class ParticleFilter:
 
     # Совершаем движение робота с добавлением Гауссова шума
     def robot_move(self, step: State) -> State:
-        ideal_state = self.ideal_robot_move(step)
-
+        dx_global = (step.x * np.cos(self.state.theta) - step.y * np.sin(self.state.theta))
+        dy_global = (step.x * np.sin(self.state.theta) + step.y * np.cos(self.state.theta))
+        
         self.state = State(
-            ideal_state.x + np.random.normal(0, self.system_noise.x),
-            ideal_state.y + np.random.normal(0, self.system_noise.y),
-            (ideal_state.theta + np.random.normal(0, self.system_noise.theta) + np.pi)
-            % (2 * np.pi) - np.pi
+            self.state.x + dx_global + np.random.normal(0, self.system_noise.x),
+            self.state.y + dy_global + np.random.normal(0, self.system_noise.y),
+            (self.state.theta
+            + step.theta
+            + np.random.normal(0, self.system_noise.theta)
+            + np.pi) % (2 * np.pi) - np.pi
         )
+
+        self.ideal_robot_move(step)
 
         return self.state
 
@@ -226,7 +231,7 @@ class ParticleFilter:
         sm = self.sensor_measurement()
         self.particles_move(step)
         self.weight_calc(sm)
-        self.resample()
         est_state = self.estimate_robot_state()
-
+        self.resample()
+        
         return est_state
