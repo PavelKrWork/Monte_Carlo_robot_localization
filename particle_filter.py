@@ -3,8 +3,6 @@ import random
 from structures import *
 
 # Алгоритм отсеивания частиц: колесо отсева
-
-
 def resampling_wheel(initial_particles: list, particles_weights: list, particles_cnt: int) -> list:
     new_particles = []
 
