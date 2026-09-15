@@ -3,6 +3,8 @@ import random
 from structures import *
 
 # Алгоритм отсеивания частиц: колесо отсева
+
+
 def resampling_wheel(initial_particles: list, particles_weights: list, particles_cnt: int) -> list:
     new_particles = []
 
@@ -16,7 +18,8 @@ def resampling_wheel(initial_particles: list, particles_weights: list, particles
         while beta > particles_weights[index]:
             beta -= particles_weights[index]
             index = (index + 1) % particles_cnt
-        new_particles.append([initial_particles[index], particles_weights[index]])
+        new_particles.append(
+            [initial_particles[index], particles_weights[index]])
 
     return new_particles
 
@@ -24,7 +27,6 @@ def resampling_wheel(initial_particles: list, particles_weights: list, particles
 # Основная логика фильтра частиц
 class ParticleFilter:
     def __init__(self, num_particles: int, initial_state: State, land_mark: LandMark, system_noise: State, sensor_noise: np.ndarray):
-        
         """
         num_particles - количество частиц
         initial_state - начальное состояние
@@ -36,34 +38,46 @@ class ParticleFilter:
         """
 
         self.num_particles = num_particles
-        self.ideal_state = State(initial_state.x, initial_state.y, initial_state.theta)
-        self.state = State(initial_state.x, initial_state.y, initial_state.theta)
-        self.no_pf_state = State(initial_state.x, initial_state.y, initial_state.theta)
+        self.ideal_state = State(
+            initial_state.x, initial_state.y, initial_state.theta)
+        self.state = State(initial_state.x, initial_state.y,
+                           initial_state.theta)
+        self.no_pf_state = State(
+            initial_state.x, initial_state.y, initial_state.theta)
 
         self.land_mark = land_mark
         self.system_noise = system_noise
         self.sensor_noise = sensor_noise
 
         # apologise that: x, y, thate are independent, loc = mean, scale = standard deviation
-        x_particles = np.random.normal(loc=initial_state.x, scale=system_noise.x, size=num_particles)
-        y_particles = np.random.normal(loc=initial_state.y, scale=system_noise.y, size=num_particles)
-        
+        x_particles = np.random.normal(
+            loc=initial_state.x, scale=system_noise.x, size=num_particles)
+        y_particles = np.random.normal(
+            loc=initial_state.y, scale=system_noise.y, size=num_particles)
+
         theta_center = (initial_state.theta + np.pi) % (2 * np.pi) - np.pi
-        theta_particles = np.random.normal(loc=theta_center, scale=system_noise.theta, size=num_particles)
+        theta_particles = np.random.normal(
+            loc=theta_center, scale=system_noise.theta, size=num_particles)
         theta_particles = (theta_particles + np.pi) % (2 * np.pi) - np.pi
 
-        particles = np.column_stack((x_particles, y_particles, theta_particles))
+        particles = np.column_stack(
+            (x_particles, y_particles, theta_particles))
         self.particles = particles
         self.weights = np.ones(num_particles) / num_particles
-        
+
     """
     Предсказываем положение робота:
     сначало робот совершает движение, а потом делает поворот
     """
+
     # Совершаем движение робота без шума
     def ideal_robot_move(self, step: State) -> State:
-        dx_global = step.x * np.cos(self.ideal_state.theta) - step.y * np.sin(self.ideal_state.theta)
-        dy_global = step.x * np.sin(self.ideal_state.theta) + step.y * np.cos(self.ideal_state.theta)
+        dx_global = step.x * \
+            np.cos(self.ideal_state.theta) - step.y * \
+            np.sin(self.ideal_state.theta)
+        dy_global = step.x * \
+            np.sin(self.ideal_state.theta) + step.y * \
+            np.cos(self.ideal_state.theta)
 
         self.ideal_state = State(
             self.ideal_state.x + dx_global,
@@ -75,39 +89,53 @@ class ParticleFilter:
 
     # Совершаем движение робота с добавлением Гауссова шума
     def robot_move(self, step: State) -> State:
-        dx_global = (step.x * np.cos(self.state.theta) - step.y * np.sin(self.state.theta))
-        dy_global = (step.x * np.sin(self.state.theta) + step.y * np.cos(self.state.theta))
-        
+        dx_global = (step.x * np.cos(self.state.theta) -
+                     step.y * np.sin(self.state.theta))
+        dy_global = (step.x * np.sin(self.state.theta) +
+                     step.y * np.cos(self.state.theta))
+
         self.state = State(
-            self.state.x + dx_global + np.random.normal(0, self.system_noise.x),
-            self.state.y + dy_global + np.random.normal(0, self.system_noise.y),
+            self.state.x + dx_global +
+            np.random.normal(0, self.system_noise.x),
+            self.state.y + dy_global +
+            np.random.normal(0, self.system_noise.y),
             (self.state.theta
-            + step.theta
-            + np.random.normal(0, self.system_noise.theta)
-            + np.pi) % (2 * np.pi) - np.pi
+             + step.theta
+             + np.random.normal(0, self.system_noise.theta)
+             + np.pi) % (2 * np.pi) - np.pi
         )
 
         self.ideal_robot_move(step)
 
         return self.state
 
-    def no_pf_move(self, step: State) -> State:
+    # Совершаем движение робота с шумом, без дальнейшего использования PF
+    def no_pf_move(self, step: State):
         dx_global = (
             step.x * np.cos(self.no_pf_state.theta)
             - step.y * np.sin(self.no_pf_state.theta)
         )
+
         dy_global = (
             step.x * np.sin(self.no_pf_state.theta)
             + step.y * np.cos(self.no_pf_state.theta)
         )
 
-        self.no_pf_state = State(
-            self.no_pf_state.x + dx_global,
-            self.no_pf_state.y + dy_global,
-            (self.no_pf_state.theta + step.theta + np.pi) % (2*np.pi) - np.pi
+        self.no_pf_state.x += (
+            dx_global + np.random.normal(0, self.system_noise.x)
         )
 
-        return self.no_pf_state
+        self.no_pf_state.y += (
+            dy_global + np.random.normal(0, self.system_noise.y)
+        )
+
+        self.no_pf_state.theta += (
+            step.theta + np.random.normal(0, self.system_noise.theta)
+        )
+
+        self.no_pf_state.theta = (
+            self.no_pf_state.theta + np.pi
+        ) % (2 * np.pi) - np.pi
 
     # Измерение сенсора робота
     def sensor_measurement(self) -> tuple:
@@ -151,22 +179,31 @@ class ParticleFilter:
     # Совершаем движение частицами
     def particles_move(self, step: State) -> np.array:
         for i in range(self.num_particles):
-            dx_global = step.x * np.cos(self.particles[i][2]) - step.y * np.sin(self.particles[i][2])
-            dy_global = step.x * np.sin(self.particles[i][2]) + step.y * np.cos(self.particles[i][2])
+            dx_global = step.x * \
+                np.cos(self.particles[i][2]) - step.y * \
+                np.sin(self.particles[i][2])
+            dy_global = step.x * \
+                np.sin(self.particles[i][2]) + step.y * \
+                np.cos(self.particles[i][2])
 
-            self.particles[i][0] += dx_global + np.random.normal(loc=0, scale=self.system_noise.x)
-            self.particles[i][1] += dy_global + np.random.normal(loc=0, scale=self.system_noise.y)
-            self.particles[i][2] = (self.particles[i][2] + step.theta + np.pi + np.random.normal(0, self.system_noise.theta)) % (2 * np.pi) - np.pi
-        
+            self.particles[i][0] += dx_global + \
+                np.random.normal(loc=0, scale=self.system_noise.x)
+            self.particles[i][1] += dy_global + \
+                np.random.normal(loc=0, scale=self.system_noise.y)
+            self.particles[i][2] = (self.particles[i][2] + step.theta + np.pi +
+                                    np.random.normal(0, self.system_noise.theta)) % (2 * np.pi) - np.pi
+
         return self.particles
 
     # Измерение каждой частицей
     def particle_measurement(self) -> list:
         particle_measurements = [0] * self.num_particles
         for i in range(self.num_particles):
-            dl = np.sqrt((self.land_mark.left_coord.x - self.particles[i][0]) ** 2 + (self.land_mark.left_coord.y - self.particles[i][1]) ** 2)
-            dr = np.sqrt((self.land_mark.right_coord.x - self.particles[i][0]) ** 2 + (self.land_mark.right_coord.y - self.particles[i][1]) ** 2)
-            
+            dl = np.sqrt((self.land_mark.left_coord.x - self.particles[i][0]) ** 2 + (
+                self.land_mark.left_coord.y - self.particles[i][1]) ** 2)
+            dr = np.sqrt((self.land_mark.right_coord.x - self.particles[i][0]) ** 2 + (
+                self.land_mark.right_coord.y - self.particles[i][1]) ** 2)
+
             dfi_l = np.arctan2(
                 self.land_mark.left_coord.y - self.particles[i][1],
                 self.land_mark.left_coord.x - self.particles[i][0]
@@ -184,7 +221,7 @@ class ParticleFilter:
             alpha_r = (alpha_r + np.pi) % (2 * np.pi) - np.pi
 
             particle_measurements[i] = (dl, dr, alpha_l, alpha_r)
-        
+
         return particle_measurements
 
     # Вычисление веса для каждой частицы из ф-лы плотности нормального распределения
@@ -197,13 +234,17 @@ class ParticleFilter:
         sigma_alpha = self.sensor_noise[2]
         for i in range(self.num_particles):
             dl, dr, dalpha_l, dalpha_r = particle_measurements[i]
-            wl = 1 / np.sqrt(2 * np.pi * sigma_l ** 2) * np.exp(-(zl - dl) ** 2 / (2 * sigma_l ** 2))
-            wr = 1 / np.sqrt(2 * np.pi * sigma_r ** 2) * np.exp(-(zr - dr) ** 2 / (2 * sigma_r ** 2))
+            wl = 1 / np.sqrt(2 * np.pi * sigma_l ** 2) * \
+                np.exp(-(zl - dl) ** 2 / (2 * sigma_l ** 2))
+            wr = 1 / np.sqrt(2 * np.pi * sigma_r ** 2) * \
+                np.exp(-(zr - dr) ** 2 / (2 * sigma_r ** 2))
 
             error_alpha_l = (alpha_l - dalpha_l + np.pi) % (2 * np.pi) - np.pi
             error_alpha_r = (alpha_r - dalpha_r + np.pi) % (2 * np.pi) - np.pi
-            walphal = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * np.exp(-error_alpha_l ** 2 / (2 * sigma_alpha ** 2))
-            walphar = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * np.exp(-error_alpha_r ** 2 / (2 * sigma_alpha ** 2))
+            walphal = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * \
+                np.exp(-error_alpha_l ** 2 / (2 * sigma_alpha ** 2))
+            walphar = 1 / np.sqrt(2 * np.pi * sigma_alpha ** 2) * \
+                np.exp(-error_alpha_r ** 2 / (2 * sigma_alpha ** 2))
 
             weights[i] = wl * wr * walphal * walphar
 
@@ -216,11 +257,12 @@ class ParticleFilter:
         self.weights = weights
 
         return weights
-    
+
     # Делаем ресемплинг всех частиц с помощью колеса отсева
     def resample(self) -> np.array:
         initial_particles = np.arange(self.num_particles)
-        new_particles = resampling_wheel(initial_particles, self.weights, self.num_particles)
+        new_particles = resampling_wheel(
+            initial_particles, self.weights, self.num_particles)
         particle_indexes = [el_i[0] for el_i in new_particles]
         self.particles = self.particles[particle_indexes]
 
@@ -240,26 +282,22 @@ class ParticleFilter:
             estimate_y += self.particles[i][1] * self.weights[i]
             sin_theta += np.sin(self.particles[i][2]) * self.weights[i]
             cos_theta += np.cos(self.particles[i][2]) * self.weights[i]
-        
+
         estimate_theta = np.arctan2(sin_theta, cos_theta)
-        
+
         return State(estimate_x, estimate_y, estimate_theta)
 
     def simulate(self, step: State) -> State:
-        # реальное движение робота
         self.robot_move(step)
-
-        # измерение реального робота
         sm = self.sensor_measurement()
 
-        # оценка без PF
-        self.no_pf_move(step)
+        self.no_pf_move(step)  # зашумленная одометрия
 
-        # PF
         self.particles_move(step)
         self.weight_calc(sm)
 
         est_state = self.estimate_robot_state()
+
         self.resample()
 
         return est_state
