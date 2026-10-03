@@ -12,6 +12,9 @@ class LocalizationMetrics:
 
         self.position_errors.append(position_error)
         self.angle_errors.append(angle_error)
+
+    def get_raw_errors(self):
+        return np.array(self.position_errors)
     
     def summary(self) -> dict:
         position_errors = np.array(self.position_errors)

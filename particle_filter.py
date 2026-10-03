@@ -24,7 +24,7 @@ def resampling_wheel(initial_particles: list, particles_weights: list, particles
 
 # Основная логика фильтра частиц
 class ParticleFilter:
-    def __init__(self, num_particles: int, initial_state: State, land_mark: LandMark, system_noise: State, sensor_noise: np.ndarray):
+    def __init__(self, num_particles: int, initial_state: State, land_mark: LandMark, system_noise: State, sensor_noise: np.ndarray, is_adapt_resampl_enabled_: bool):
         """
         num_particles - количество частиц
         initial_state - начальное состояние
@@ -33,6 +33,7 @@ class ParticleFilter:
         sensor_noise - шум измерений
         particles - состояния частиц
         weights - веса частиц
+        is_adapt_resampl_enabled - включен ли адаптивный ресемплинг
         """
 
         self.num_particles = num_particles
@@ -43,11 +44,14 @@ class ParticleFilter:
         self.no_pf_state = State(
             initial_state.x, initial_state.y, initial_state.theta)
 
+        self.camera_state = State(
+            initial_state.x, initial_state.y, initial_state.theta)
+
         self.land_mark = land_mark
         self.system_noise = system_noise
         self.sensor_noise = sensor_noise
 
-        # apologise that: x, y, thate are independent, loc = mean, scale = standard deviation
+        # apologise that: x, y, theta are independent, loc = mean, scale = standard deviation
         x_particles = np.random.normal(
             loc=initial_state.x, scale=system_noise.x, size=num_particles)
         y_particles = np.random.normal(
@@ -60,8 +64,10 @@ class ParticleFilter:
 
         particles = np.column_stack(
             (x_particles, y_particles, theta_particles))
+
         self.particles = particles
         self.weights = np.ones(num_particles) / num_particles
+        self.is_adapt_resampl_enabled = is_adapt_resampl_enabled_
 
     """
     Предсказываем положение робота:
@@ -193,6 +199,22 @@ class ParticleFilter:
 
         return self.particles
 
+    def randomize_particles(self):
+        x_min, x_max = -4.5, 4.5
+        y_min, y_max = -6.0, 6.0
+
+        self.particles[:, 0] = np.random.uniform(
+            x_min, x_max, self.num_particles
+        )
+        self.particles[:, 1] = np.random.uniform(
+            y_min, y_max, self.num_particles
+        )
+        self.particles[:, 2] = np.random.uniform(
+            -np.pi, np.pi, self.num_particles
+        )
+
+        self.weights.fill(1.0 / self.num_particles)
+
     # Измерение каждой частицей
     def particle_measurement(self) -> list:
         particle_measurements = [0] * self.num_particles
@@ -269,6 +291,31 @@ class ParticleFilter:
 
         return self.particles
 
+    def effective_particles_calc(self) -> float:
+        return 1.0 / np.sum(self.weights ** 2)
+
+    def camera_estimate_state(self, zl: float, zr: float, alpha_l: float, alpha_r: float) -> State:
+        x = (zl ** 2 - zr ** 2) / 4
+
+        under_sqrt = zl ** 2 - (x + 1) ** 2
+
+        under_sqrt = max(under_sqrt, 0) # с большой дисперсией шума сенсора under_sqrt может быть < 0
+
+        y = 5 - np.sqrt(under_sqrt)
+
+        phi_l = np.arctan2(5 - y, -1 - x)
+        phi_r = np.arctan2(5 - y, 1 - x)
+
+        theta_l = phi_l - alpha_l
+        theta_r = phi_r - alpha_r
+
+        theta = np.arctan2(
+            np.sin(theta_l) + np.sin(theta_r),
+            np.cos(theta_l) + np.cos(theta_r)
+        )
+
+        return State(x, y, theta)
+
     # Оцениваем положение робота
     def estimate_robot_state(self) -> State:
         estimate_x = 0
@@ -288,6 +335,9 @@ class ParticleFilter:
     def simulate(self, step: State) -> State:
         self.robot_move(step)
         sm = self.sensor_measurement()
+        
+        camera_est = self.camera_estimate_state(*sm)
+        self.camera_state = camera_est
 
         self.no_pf_move(step)  # зашумленная одометрия
 
@@ -296,6 +346,10 @@ class ParticleFilter:
 
         est_state = self.estimate_robot_state()
 
-        self.resample()
-
+        if self.is_adapt_resampl_enabled:
+            if self.effective_particles_calc() < self.num_particles // 2:
+                self.resample()
+        else:
+            self.resample()
+        
         return est_state
