@@ -1,5 +1,9 @@
 import numpy as np
-from structures import *
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join('..')))
+from utils.structures import *
 
 class LocalizationMetrics:
     def __init__(self):

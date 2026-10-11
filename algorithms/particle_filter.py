@@ -1,6 +1,10 @@
 import numpy as np
 import random
-from structures import *
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join('..')))
+from utils.structures import *
 
 # Алгоритм отсеивания частиц: колесо отсева
 def resampling_wheel(initial_particles: list, particles_weights: list, particles_cnt: int) -> list:

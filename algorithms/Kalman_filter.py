@@ -11,7 +11,7 @@ class KalmanFilter:
         w = np.random.multivariate_normal(np.zeros(len(self.mu)), R)
         xt = A @ xt + B @ self.u + w
         mu_pred = A @ self.mu + B @ self.u
-        cov_pred = A @ self.cov @ A.T + R
+        cov_pred = A @ self.cov @ A.T + R4
 
         return (mu_pred, cov_pred, xt)
 

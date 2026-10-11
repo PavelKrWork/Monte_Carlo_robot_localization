@@ -1,5 +1,9 @@
 import matplotlib.pyplot as plt
-from particle_filter import State
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join('..')))
+from algorithms.particle_filter import State
 import numpy as np
 
 
